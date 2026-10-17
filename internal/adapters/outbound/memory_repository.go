@@ -41,3 +41,26 @@ func (r *InMemoryRepository) Get(name string) (*domain.Counter, error) {
 		Count: counter.Count,
 	}, nil
 }
+
+func (r *InMemoryRepository) GetAll() []*domain.Counter {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var snapshot []*domain.Counter
+	for _, val := range r.counters {
+		snapshot = append(snapshot, &domain.Counter{
+			Name:  val.Name,
+			Count: val.Count,
+		})
+	}
+	return snapshot
+}
+
+func (r *InMemoryRepository) Save(counter *domain.Counter) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.counters[counter.Name] = counter
+	return nil
+
+}

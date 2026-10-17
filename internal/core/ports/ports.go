@@ -10,4 +10,6 @@ type CounterService interface {
 type CounterRepository interface {
 	Increment(name string) error
 	Get(name string) (*domain.Counter, error)
+	GetAll() ([]*domain.Counter, error)
+	Save(counter *domain.Counter) error
 }
