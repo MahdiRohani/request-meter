@@ -2,14 +2,15 @@ package services
 
 import (
 	"github.com/MahdiRohani/request-meter/internal/core/domain"
-	"github.com/MahdiRohani/request-meter/internal/core/ports"
+	"github.com/MahdiRohani/request-meter/internal/core/ports/inbound"
+	"github.com/MahdiRohani/request-meter/internal/core/ports/outbound"
 )
 
 type counterService struct {
-	fastRepo ports.CounterRepository
+	fastRepo outbound.CounterRepository
 }
 
-func NewCounterService(fastRepo ports.CounterRepository) ports.CounterService {
+func NewCounterService(fastRepo outbound.CounterRepository) inbound.CounterService {
 	return &counterService{
 		fastRepo: fastRepo,
 	}
