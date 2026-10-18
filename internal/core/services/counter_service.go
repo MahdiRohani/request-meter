@@ -11,11 +11,11 @@ import (
 )
 
 type counterService struct {
-	fastRepo outbound.FastStoragePort
-	slowRepo outbound.SlowStoragePort
+	fastRepo outbound.FastRepositoryPort
+	slowRepo outbound.SlowRepositoryPort
 }
 
-func NewCounterService(fastRepo outbound.FastStoragePort, slowRepo outbound.SlowStoragePort) inbound.CounterService {
+func NewCounterService(fastRepo outbound.FastRepositoryPort, slowRepo outbound.SlowRepositoryPort) inbound.CounterService {
 	return &counterService{
 		fastRepo: fastRepo,
 		slowRepo: slowRepo,
@@ -39,7 +39,8 @@ func (c *counterService) StartSync(cnt context.Context, interval time.Duration) 
 		for {
 			select {
 			case <-cnt.Done():
-				log.Printf("Background worker started. Syncing every %v...\n", interval)
+				log.Println("Stopping background worker. Flushing final data")
+				c.syncToSlowDB()
 				return
 			case <-ticker.C:
 				c.syncToSlowDB()
@@ -56,10 +57,8 @@ func (c *counterService) syncToSlowDB() {
 		return
 	}
 
-	for _, counter := range snapShot {
-		err := c.slowRepo.Save(counter)
-		if err != nil {
-			log.Printf("Failed to save counter %s: %v\n", counter.Name, err)
-		}
+	err := c.slowRepo.SaveBatch(snapShot)
+	if err != nil {
+		log.Printf("Failed to batch save counters: %v\n", err)
 	}
 }

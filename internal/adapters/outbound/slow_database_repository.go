@@ -30,16 +30,19 @@ func (s *SlowDatabaseRepository) GetAll() []*domain.Counter {
 	return nil
 }
 
-func (s *SlowDatabaseRepository) Save(counter *domain.Counter) error {
+func (s *SlowDatabaseRepository) SaveBatch(counters []*domain.Counter) error {
 	s.simulateLatency()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.counters[counter.Name] = &domain.Counter{
-		Name:  counter.Name,
-		Count: counter.Count,
+	for _, counter := range counters {
+		s.counters[counter.Name] = &domain.Counter{
+			Name:  counter.Name,
+			Count: counter.Count,
+		}
+		log.Printf("[Database] Saved: %s = %d\n", counter.Name, counter.Count)
 	}
-	log.Printf("[Database] Saved: %s = %d\n", counter.Name, counter.Count)
+
 	return nil
 }
