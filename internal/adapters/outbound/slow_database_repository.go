@@ -38,7 +38,7 @@ func (s *SlowDatabaseRepository) GetAll() []*domain.Counter {
 			Count: val.Count,
 		})
 	}
-	return nil
+	return snapshot
 }
 
 func (s *SlowDatabaseRepository) SaveBatch(counters []*domain.Counter) error {
