@@ -27,6 +27,17 @@ func (s *SlowDatabaseRepository) simulateLatency() {
 
 func (s *SlowDatabaseRepository) GetAll() []*domain.Counter {
 	s.simulateLatency()
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var snapshot []*domain.Counter
+	for _, val := range s.counters {
+		snapshot = append(snapshot, &domain.Counter{
+			Name:  val.Name,
+			Count: val.Count,
+		})
+	}
 	return nil
 }
 
