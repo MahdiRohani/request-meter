@@ -7,12 +7,14 @@ import (
 )
 
 type counterService struct {
-	fastRepo outbound.CounterRepository
+	fastRepo outbound.FastStoragePort
+	slowRepo outbound.SlowStoragePort
 }
 
-func NewCounterService(fastRepo outbound.CounterRepository) inbound.CounterService {
+func NewCounterService(fastRepo outbound.FastStoragePort, slowRepo outbound.SlowStoragePort) inbound.CounterService {
 	return &counterService{
 		fastRepo: fastRepo,
+		slowRepo: slowRepo,
 	}
 }
 

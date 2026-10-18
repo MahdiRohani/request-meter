@@ -25,16 +25,6 @@ func (s *SlowDatabaseRepository) simulateLatency() {
 	time.Sleep(delay)
 }
 
-func (s *SlowDatabaseRepository) Increment(name string) error {
-	s.simulateLatency()
-	return nil
-}
-
-func (s *SlowDatabaseRepository) Get(name string) (*domain.Counter, error) {
-	s.simulateLatency()
-	return nil, nil
-}
-
 func (s *SlowDatabaseRepository) GetAll() []*domain.Counter {
 	s.simulateLatency()
 	return nil
