@@ -60,7 +60,10 @@ func (r *InMemoryRepository) Save(counter *domain.Counter) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.counters[counter.Name] = counter
+	r.counters[counter.Name] = &domain.Counter{
+		Name:  counter.Name,
+		Count: counter.Count,
+	}
 	return nil
 
 }
