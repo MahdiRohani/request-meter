@@ -7,6 +7,7 @@ type FastRepositoryPort interface {
 	Get(name string) (*domain.Counter, error)
 	GetAll() []*domain.Counter
 	Save(counter *domain.Counter) error
+	ResetFlushed(flushedCounters []*domain.Counter)
 }
 
 type SlowRepositoryPort interface {

@@ -61,4 +61,5 @@ func (c *counterService) syncToSlowDB() {
 	if err != nil {
 		log.Printf("Failed to batch save counters: %v\n", err)
 	}
+	c.fastRepo.ResetFlushed(snapShot)
 }

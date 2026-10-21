@@ -67,3 +67,20 @@ func (r *InMemoryRepository) Save(counter *domain.Counter) error {
 	return nil
 
 }
+
+func (r *InMemoryRepository) ResetFlushed(flushed []*domain.Counter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, f := range flushed {
+
+		if current, exists := r.counters[f.Name]; exists {
+
+			current.Count -= f.Count
+
+			if current.Count <= 0 {
+				delete(r.counters, f.Name)
+			}
+		}
+	}
+}
