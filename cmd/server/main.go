@@ -18,13 +18,14 @@ func main() {
 
 	slowRepo := outbound.NewSlowDatabaseRepository()
 	fastRepo := outbound.NewInMemoryRepository()
+	lock := outbound.NewRedisRepository()
 
 	savedCounter := slowRepo.GetAll()
 	for _, counter := range savedCounter {
 		fastRepo.Save(counter)
 	}
 
-	counterService := services.NewCounterService(fastRepo, slowRepo)
+	counterService := services.NewCounterService(fastRepo, slowRepo, lock)
 
 	cnx, cancel := context.WithCancel(context.Background())
 

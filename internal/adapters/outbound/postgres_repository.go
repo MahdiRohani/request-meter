@@ -42,7 +42,7 @@ func (p *PostgresRepository) SaveBatch(counters []*domain.Counter) error {
 		INSERT INTO counters (name, count)
 		VALUES ($1, $2)
 		ON CONFLICT (name) DO UPDATE 
-		SET count = counters.count + EXCLUDED.count;
+		SET count = EXCLUDED.count
 	`
 	stmt, err := tx.Prepare(query)
 	if err != nil {
