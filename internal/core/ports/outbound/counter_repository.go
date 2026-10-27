@@ -4,9 +4,9 @@ import "github.com/MahdiRohani/request-meter/internal/core/domain"
 
 type FastRepositoryPort interface {
 	Increment(name string) error
-	Get(name string) (*domain.Counter, error)
+	GetCachedTotal(name string) (*domain.Counter, error)
 	GetAll() []*domain.Counter
-	Save(counter *domain.Counter) error
+	SetBatchCachedTotals(counters []*domain.Counter)
 	ResetFlushed(flushedCounters []*domain.Counter)
 }
 

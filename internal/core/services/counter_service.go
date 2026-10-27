@@ -21,11 +21,15 @@ func NewCounterService(
 	slowRepo outbound.SlowRepositoryPort,
 	lock outbound.DistributedLockPort) inbound.CounterService {
 
-	return &counterService{
+	service := &counterService{
 		fastRepo: fastRepo,
 		slowRepo: slowRepo,
 		lock:     lock,
 	}
+
+	existingCounters := service.slowRepo.GetAll()
+	service.fastRepo.SetBatchCachedTotals(existingCounters)
+	return service
 }
 
 func (c *counterService) Increment(name string) error {
@@ -33,7 +37,12 @@ func (c *counterService) Increment(name string) error {
 }
 
 func (c *counterService) GetStats(name string) (*domain.Counter, error) {
-	return c.fastRepo.Get(name)
+	counter, err := c.fastRepo.GetCachedTotal(name)
+
+	if counter == nil {
+		return domain.NewCounter(name), nil
+	}
+	return counter, err
 }
 
 func (c *counterService) StartSync(cnt context.Context, interval time.Duration) {
@@ -94,6 +103,9 @@ func (c *counterService) syncToSlowDB(cnt context.Context) {
 	err = c.slowRepo.SaveBatch(finalTotals)
 	if err != nil {
 		log.Printf("Failed to batch save counters: %v\n", err)
+		return
 	}
 	c.fastRepo.ResetFlushed(snapShot)
+
+	c.fastRepo.SetBatchCachedTotals(finalTotals)
 }

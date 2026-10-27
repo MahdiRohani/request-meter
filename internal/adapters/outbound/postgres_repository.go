@@ -41,8 +41,8 @@ func (p *PostgresRepository) SaveBatch(counters []*domain.Counter) error {
 	query := `
 		INSERT INTO counters (name, count)
 		VALUES ($1, $2)
-		ON CONFLICT (name) DO UPDATE 
-		SET count = EXCLUDED.count
+		ON CONFLICT (name) 
+		DO UPDATE SET count = EXCLUDED.count; 
 	`
 	stmt, err := tx.Prepare(query)
 	if err != nil {
@@ -50,9 +50,9 @@ func (p *PostgresRepository) SaveBatch(counters []*domain.Counter) error {
 	}
 	defer stmt.Close()
 	for _, c := range counters {
-		_, err := tx.Exec(c.Name, c.Count)
+		_, err := stmt.Exec(c.Name, c.Count)
 		if err != nil {
-			return nil
+			return err
 		}
 	}
 	return tx.Commit()
@@ -71,7 +71,13 @@ func (p *PostgresRepository) GetAll() []*domain.Counter {
 		var c domain.Counter
 		if err := rows.Scan(&c.Name, &c.Count); err == nil {
 			snapshot = append(snapshot, &c)
+		} else {
+			log.Printf("Error scanning row: %v", err)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating over rows: %v", err)
+		return nil
 	}
 	return snapshot
 }

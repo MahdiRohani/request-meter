@@ -7,13 +7,15 @@ import (
 )
 
 type InMemoryRepository struct {
-	mu       sync.RWMutex
-	counters map[string]*domain.Counter
+	mu           sync.RWMutex
+	deltas       map[string]*domain.Counter
+	cachedTotals map[string]*domain.Counter
 }
 
 func NewInMemoryRepository() *InMemoryRepository {
 	return &InMemoryRepository{
-		counters: make(map[string]*domain.Counter),
+		deltas:       make(map[string]*domain.Counter),
+		cachedTotals: make(map[string]*domain.Counter),
 	}
 }
 
@@ -21,20 +23,20 @@ func (r *InMemoryRepository) Increment(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.counters[name]; !exists {
-		r.counters[name] = domain.NewCounter(name)
+	if _, exists := r.deltas[name]; !exists {
+		r.deltas[name] = domain.NewCounter(name)
 	}
-	r.counters[name].Increment()
+	r.deltas[name].Increment()
 	return nil
 }
 
-func (r *InMemoryRepository) Get(name string) (*domain.Counter, error) {
+func (r *InMemoryRepository) GetCachedTotal(name string) (*domain.Counter, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	counter, exists := r.counters[name]
+	counter, exists := r.cachedTotals[name]
 	if !exists {
-		return domain.NewCounter(name), nil
+		return nil, nil
 	}
 	return &domain.Counter{
 		Name:  counter.Name,
@@ -47,24 +49,25 @@ func (r *InMemoryRepository) GetAll() []*domain.Counter {
 	defer r.mu.RUnlock()
 
 	var snapshot []*domain.Counter
-	for _, val := range r.counters {
+	for _, counter := range r.deltas {
 		snapshot = append(snapshot, &domain.Counter{
-			Name:  val.Name,
-			Count: val.Count,
+			Name:  counter.Name,
+			Count: counter.Count,
 		})
 	}
 	return snapshot
 }
 
-func (r *InMemoryRepository) Save(counter *domain.Counter) error {
+func (r *InMemoryRepository) SetBatchCachedTotals(counters []*domain.Counter) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.counters[counter.Name] = &domain.Counter{
-		Name:  counter.Name,
-		Count: counter.Count,
+	for _, counter := range counters {
+		r.cachedTotals[counter.Name] = &domain.Counter{
+			Name:  counter.Name,
+			Count: counter.Count,
+		}
 	}
-	return nil
 
 }
 
@@ -74,12 +77,12 @@ func (r *InMemoryRepository) ResetFlushed(flushed []*domain.Counter) {
 
 	for _, f := range flushed {
 
-		if current, exists := r.counters[f.Name]; exists {
+		if current, exists := r.deltas[f.Name]; exists {
 
 			current.Count -= f.Count
 
 			if current.Count <= 0 {
-				delete(r.counters, f.Name)
+				delete(r.deltas, f.Name)
 			}
 		}
 	}
