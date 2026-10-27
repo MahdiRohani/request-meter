@@ -69,6 +69,8 @@ func (c *counterService) syncToSlowDB(cnt context.Context) {
 	snapShot := c.fastRepo.GetAll()
 
 	if len(snapShot) == 0 {
+		existingCounters := c.slowRepo.GetAll()
+		c.fastRepo.SetBatchCachedTotals(existingCounters)
 		return
 	}
 

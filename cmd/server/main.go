@@ -3,54 +3,93 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/MahdiRohani/request-meter/internal/adapters/inbound/http"
+	"github.com/MahdiRohani/request-meter/internal/adapters/inbound"
 	"github.com/MahdiRohani/request-meter/internal/adapters/outbound"
 	"github.com/MahdiRohani/request-meter/internal/core/services"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
 
-	slowRepo := outbound.NewSlowDatabaseRepository()
-	fastRepo := outbound.NewInMemoryRepository()
-	lock := outbound.NewRedisRepository()
-
-	savedCounter := slowRepo.GetAll()
-	for _, counter := range savedCounter {
-		fastRepo.Save(counter)
+	if err := godotenv.Load(); err != nil {
+		log.Println("Warning: No .env file found. Using system environment variables.")
 	}
 
-	counterService := services.NewCounterService(fastRepo, slowRepo, lock)
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		log.Fatal("DATABASE_URL is required in .env")
+	}
 
-	cnx, cancel := context.WithCancel(context.Background())
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		log.Fatal("REDIS_ADDR is required in .env")
+	}
 
-	counterHandler := http.NewCounterHandler(counterService)
+	serverPort := os.Getenv("SERVER_PORT")
+	if serverPort == "" {
+		serverPort = "8080"
+	}
 
-	gin.SetMode(gin.ReleaseMode)
+	syncIntervalStr := os.Getenv("SYNC_INTERVAL")
+	syncInterval, err := time.ParseDuration(syncIntervalStr)
+	if err != nil || syncInterval <= 0 {
+		syncInterval = 500 * time.Millisecond
+	}
+
+	postgres := outbound.NewPostgresRepository(dbURL)
+	rdb := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+	redisLock := outbound.NewRedisLockAdapter(rdb)
+
+	memoryRepo := outbound.NewInMemoryRepository()
+
+	counterService := services.NewCounterService(memoryRepo, postgres, redisLock)
+
+	ctx, cancelWorker := context.WithCancel(context.Background())
+
+	counterService.StartSync(ctx, syncInterval)
+
+	counterHandler := inbound.NewCounterHandler(counterService)
+
 	router := gin.Default()
+	router.POST("/counter/:name", counterHandler.IncrementEndpoint)
+	router.GET("/stats/:name", counterHandler.GetStateEndpoint)
 
-	api := router.Group("/api/v1")
-	{
-		api.POST("/counter/:name", counterHandler.IncrementEndpoint)
-		api.GET("/counter/:name", counterHandler.GetStateEndpoint)
+	srv := &http.Server{
+		Addr:    ":" + serverPort,
+		Handler: router,
 	}
 
 	go func() {
-		if err := router.Run(":8080"); err != nil {
-			log.Fatalf("Failed to start server: %v", err)
+		log.Printf("Server is running on port %s...", serverPort)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
 		}
 	}()
 
-	counterService.StartSync(cnx, 5*time.Second)
-	stopChan := make(chan os.Signal, 1)
-	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
-	<-stopChan
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
 
-	cancel()
-	time.Sleep(2 * time.Second)
+	log.Println("Shutting down server gracefully...")
+
+	cancelWorker()
+
+	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+
+	if err := srv.Shutdown(ctxShutdown); err != nil {
+		log.Fatal("Server forced to shutdown:", err)
+	}
+
+	log.Println("Server exiting successfully. Data saved.")
 }

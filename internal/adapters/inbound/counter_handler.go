@@ -1,4 +1,4 @@
-package http
+package inbound
 
 import (
 	"net/http"
