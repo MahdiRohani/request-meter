@@ -56,7 +56,9 @@ func (c *counterService) StartSync(cnt context.Context, interval time.Duration) 
 			select {
 			case <-cnt.Done():
 				log.Println("Stopping background worker. Flushing final data")
-				c.syncToSlowDB(cnt)
+				rescueCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				c.syncToSlowDB(rescueCtx)
 				return
 			case <-ticker.C:
 				c.syncToSlowDB(cnt)

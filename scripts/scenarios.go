@@ -18,7 +18,16 @@ type StatResp struct {
 	Count int64  `json:"Count"`
 }
 
-var client = &http.Client{Timeout: 2 * time.Second}
+var loadTestClient = &http.Client{
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     200,
+		IdleConnTimeout:     30 * time.Second,
+	},
+	Timeout: 5 * time.Second,
+}
+
 var db *sql.DB
 
 func initDB() {
@@ -35,7 +44,7 @@ func now() string {
 
 func getInstanceStat(port int, counter string) int64 {
 	url := fmt.Sprintf("http://localhost:%d/stats/%s", port, counter)
-	resp, err := client.Get(url)
+	resp, err := loadTestClient.Get(url)
 	if err != nil {
 		return -1
 	}
@@ -61,15 +70,30 @@ func sendRequestsGradually(port int, counter string, total int, duration time.Du
 	}
 	delay := duration / time.Duration(total)
 	url := fmt.Sprintf("http://localhost:%d/counter/%s", port, counter)
+
+	var reqWg sync.WaitGroup
+	reqWg.Add(total)
+
 	for i := 0; i < total; i++ {
-		req, _ := http.NewRequest("POST", url, nil)
-		resp, err := client.Do(req)
-		if err == nil {
+
+		go func() {
+			defer reqWg.Done()
+			req, _ := http.NewRequest("POST", url, nil)
+			resp, err := loadTestClient.Do(req)
+
+			if err != nil {
+				fmt.Printf("[%s] ❌ Failed to send request to Port %d: %v\n", now(), port, err)
+				return
+			}
+
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
-		}
+		}()
+
 		time.Sleep(delay)
 	}
+
+	reqWg.Wait()
 	fmt.Printf("[%s] Finished sending %d reqs to Port %d\n", now(), total, port)
 }
 
@@ -111,7 +135,6 @@ func main() {
 		stop <- true
 
 	case "2":
-
 		counter := "scen2_multi"
 		db.Exec("DELETE FROM counters WHERE name = $1", counter)
 		stop := make(chan bool)
@@ -127,7 +150,6 @@ func main() {
 		stop <- true
 
 	case "4":
-
 		counter := "scen4_one_click"
 		db.Exec("DELETE FROM counters WHERE name = $1", counter)
 		stop := make(chan bool)
