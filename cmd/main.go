@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/lib/pq"
+
 	"github.com/MahdiRohani/request-meter/internal/adapters/inbound"
 	"github.com/MahdiRohani/request-meter/internal/adapters/outbound"
 	"github.com/MahdiRohani/request-meter/internal/core/services"
@@ -60,6 +62,8 @@ func main() {
 
 	counterHandler := inbound.NewCounterHandler(counterService)
 
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
 	router.POST("/counter/:name", counterHandler.IncrementEndpoint)
 	router.GET("/stats/:name", counterHandler.GetStateEndpoint)

@@ -12,6 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
   
   redis:
     image: redis:7-alpine
@@ -21,7 +22,9 @@ services:
 
   api1:
     build: .
+    restart: on-failure
     environment:
+      - INSTANCE_NAME=8081
       - DATABASE_URL=postgres://admin:password@postgres:5432/meter_db?sslmode=disable
       - REDIS_ADDR=redis:6379
       - SERVER_PORT=8080
@@ -34,7 +37,9 @@ services:
 
   api2:
     build: .
+    restart: on-failure 
     environment:
+      - INSTANCE_NAME=8082
       - DATABASE_URL=postgres://admin:password@postgres:5432/meter_db?sslmode=disable
       - REDIS_ADDR=redis:6379
       - SERVER_PORT=8080
@@ -47,7 +52,9 @@ services:
 
   api3:
     build: .
+    restart: on-failure
     environment:
+      - INSTANCE_NAME=8083
       - DATABASE_URL=postgres://admin:password@postgres:5432/meter_db?sslmode=disable
       - REDIS_ADDR=redis:6379
       - SERVER_PORT=8080

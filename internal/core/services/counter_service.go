@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	"github.com/MahdiRohani/request-meter/internal/core/domain"
@@ -66,11 +67,13 @@ func (c *counterService) StartSync(cnt context.Context, interval time.Duration) 
 }
 
 func (c *counterService) syncToSlowDB(cnt context.Context) {
+	instance := os.Getenv("INSTANCE_NAME")
 	snapShot := c.fastRepo.GetAll()
 
 	if len(snapShot) == 0 {
 		existingCounters := c.slowRepo.GetAll()
 		c.fastRepo.SetBatchCachedTotals(existingCounters)
+		log.Printf("[Instance-%s] Read-Cache synced from DB (No local writes)", instance)
 		return
 	}
 
@@ -80,9 +83,11 @@ func (c *counterService) syncToSlowDB(cnt context.Context) {
 	acquire, err := c.lock.Acquire(cnt, lockKey, ttl)
 
 	if err != nil || !acquire {
+		log.Printf("[Instance-%s] LOCKED OUT! Waiting for next cycle...", instance)
 		return
 	}
 	defer c.lock.Release(context.Background(), lockKey)
+	log.Printf("[Instance-%s] GOT LOCK! Flushing %v to DB...", instance, snapShot)
 
 	existingCounters := c.slowRepo.GetAll()
 	existingMap := make(map[string]int64)
@@ -110,4 +115,5 @@ func (c *counterService) syncToSlowDB(cnt context.Context) {
 	c.fastRepo.ResetFlushed(snapShot)
 
 	c.fastRepo.SetBatchCachedTotals(finalTotals)
+	log.Printf("[Instance-%s] DB Sync & Cache Update Complete! Current DB State: %v", instance, existingCounters)
 }

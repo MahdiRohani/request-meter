@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS counters (
+    name VARCHAR(255) PRIMARY KEY,
+    count BIGINT NOT NULL
+);
