@@ -18,16 +18,10 @@ func NewPostgresRepository(dbURL string) *PostgresRepository {
 		log.Fatalf("Failed to open database connection: %v", err)
 	}
 
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS counters (
-			name VARCHAR(255) PRIMARY KEY,
-			count BIGINT NOT NULL
-		);
-	`)
-
-	if err != nil {
-		log.Fatalf("Failed to create tables: %v", err)
+	if err := db.Ping(); err != nil {
+		log.Fatalf("Database is not reachable: %v", err)
 	}
+
 	return &PostgresRepository{db: db}
 }
 

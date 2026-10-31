@@ -30,7 +30,7 @@ func NewCounterService(
 	}
 
 	existingCounters := service.slowRepo.GetAll()
-	service.fastRepo.SetBatchCachedTotals(existingCounters)
+	service.fastRepo.SetBatch(existingCounters)
 	return service
 }
 
@@ -39,7 +39,7 @@ func (c *counterService) Increment(name string) error {
 }
 
 func (c *counterService) GetStats(name string) (*domain.Counter, error) {
-	counter, err := c.fastRepo.GetCachedTotal(name)
+	counter, err := c.fastRepo.Get(name)
 
 	if counter == nil {
 		return domain.NewCounter(name), nil
@@ -77,7 +77,7 @@ func (c *counterService) syncToSlowDB(cnt context.Context) {
 
 	if len(snapShot) == 0 {
 		existingCounters := c.slowRepo.GetAll()
-		c.fastRepo.SetBatchCachedTotals(existingCounters)
+		c.fastRepo.SetBatch(existingCounters)
 		log.Printf("[Instance-%s] Read-Cache synced from DB (No local writes)", instance)
 		return
 	}
@@ -119,6 +119,6 @@ func (c *counterService) syncToSlowDB(cnt context.Context) {
 	}
 	c.fastRepo.ResetFlushed(snapShot)
 
-	c.fastRepo.SetBatchCachedTotals(finalTotals)
+	c.fastRepo.SetBatch(finalTotals)
 	log.Printf("[Instance-%s] DB Sync & Cache Update Complete! Current DB State: %v", instance, existingCounters)
 }

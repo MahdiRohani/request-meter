@@ -60,6 +60,7 @@ func Run() {
 
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	gin.SetMode(gin.ReleaseMode)
+
 	router := gin.Default()
 	router.POST("/counter/:name", counterHandler.IncrementEndpoint)
 	router.GET("/stats/:name", counterHandler.GetStateEndpoint)

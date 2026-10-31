@@ -30,7 +30,7 @@ func (r *InMemoryRepository) Increment(name string) error {
 	return nil
 }
 
-func (r *InMemoryRepository) GetCachedTotal(name string) (*domain.Counter, error) {
+func (r *InMemoryRepository) Get(name string) (*domain.Counter, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -58,7 +58,7 @@ func (r *InMemoryRepository) GetAll() []*domain.Counter {
 	return snapshot
 }
 
-func (r *InMemoryRepository) SetBatchCachedTotals(counters []*domain.Counter) {
+func (r *InMemoryRepository) SetBatch(counters []*domain.Counter) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
