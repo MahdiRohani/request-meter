@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/MahdiRohani/request-meter/internal/core/domain"
@@ -46,10 +47,12 @@ func (c *counterService) GetStats(name string) (*domain.Counter, error) {
 	return counter, err
 }
 
-func (c *counterService) StartSync(cnt context.Context, interval time.Duration) {
+func (c *counterService) StartSync(cnt context.Context, wg *sync.WaitGroup, interval time.Duration) {
+	wg.Add(1)
 	ticker := time.NewTicker(interval)
 
 	go func() {
+		defer wg.Done()
 		defer ticker.Stop()
 
 		for {

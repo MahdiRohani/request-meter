@@ -11,7 +11,11 @@ type RedisLockAdapter struct {
 	client *redis.Client
 }
 
-func NewRedisLockAdapter(client *redis.Client) *RedisLockAdapter {
+func NewRedisLockAdapter(redisAddr string) *RedisLockAdapter {
+	client := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+
 	return &RedisLockAdapter{
 		client: client,
 	}

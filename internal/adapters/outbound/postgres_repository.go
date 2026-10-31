@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/MahdiRohani/request-meter/internal/core/domain"
+	_ "github.com/lib/pq"
 )
 
 type PostgresRepository struct {

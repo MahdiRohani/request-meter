@@ -6,17 +6,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
-
-	_ "github.com/lib/pq"
 
 	"github.com/MahdiRohani/request-meter/internal/adapters/inbound"
 	"github.com/MahdiRohani/request-meter/internal/adapters/outbound"
 	"github.com/MahdiRohani/request-meter/internal/core/services"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
 )
 
 func Run() {
@@ -46,18 +44,17 @@ func Run() {
 	}
 
 	postgres := outbound.NewPostgresRepository(dbURL)
-	rdb := redis.NewClient(&redis.Options{
-		Addr: redisAddr,
-	})
-	redisLock := outbound.NewRedisLockAdapter(rdb)
+
+	redisLock := outbound.NewRedisLockAdapter(redisAddr)
 
 	memoryRepo := outbound.NewInMemoryRepository()
 
 	counterService := services.NewCounterService(memoryRepo, postgres, redisLock)
 
 	ctx, cancelWorker := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
 
-	counterService.StartSync(ctx, syncInterval)
+	counterService.StartSync(ctx, &wg, syncInterval)
 
 	counterHandler := inbound.NewCounterHandler(counterService)
 
@@ -86,8 +83,8 @@ func Run() {
 	log.Println("Shutting down server gracefully...")
 
 	cancelWorker()
-	time.Sleep(2 * time.Second)
 
+	wg.Wait()
 	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShutdown()
 
