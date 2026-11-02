@@ -10,42 +10,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/MahdiRohani/request-meter/internal/adapters/inbound"
-	"github.com/MahdiRohani/request-meter/internal/adapters/outbound"
-	"github.com/MahdiRohani/request-meter/internal/core/services"
+	"github.com/MahdiRohani/request-meter/configs"
+	"github.com/MahdiRohani/request-meter/internal/adapter/inbound"
+	"github.com/MahdiRohani/request-meter/internal/adapter/outbound"
+	services "github.com/MahdiRohani/request-meter/internal/service"
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 )
 
 func Run() {
-	if err := godotenv.Load(); err != nil {
-		log.Println("Warning: No .env file found. Using system environment variables.")
-	}
 
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		log.Fatal("DATABASE_URL is required in .env")
-	}
+	postgres := outbound.NewPostgresRepository(configs.ApplicationConfigs.DatabaseURL)
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		log.Fatal("REDIS_ADDR is required in .env")
-	}
-
-	serverPort := os.Getenv("SERVER_PORT")
-	if serverPort == "" {
-		serverPort = "8080"
-	}
-
-	syncIntervalStr := os.Getenv("SYNC_INTERVAL")
-	syncInterval, err := time.ParseDuration(syncIntervalStr)
-	if err != nil || syncInterval <= 0 {
-		syncInterval = 500 * time.Millisecond
-	}
-
-	postgres := outbound.NewPostgresRepository(dbURL)
-
-	redisLock := outbound.NewRedisLockAdapter(redisAddr)
+	redisLock := outbound.NewRedisLockAdapter(configs.ApplicationConfigs.RedisAddr)
 
 	memoryRepo := outbound.NewInMemoryRepository()
 
@@ -54,7 +30,7 @@ func Run() {
 	ctx, cancelWorker := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
-	counterService.StartSync(ctx, &wg, syncInterval)
+	counterService.StartSync(ctx, &wg, configs.ApplicationConfigs.SyncInterval)
 
 	counterHandler := inbound.NewCounterHandler(counterService)
 
@@ -66,12 +42,12 @@ func Run() {
 	router.GET("/stats/:name", counterHandler.GetStateEndpoint)
 
 	srv := &http.Server{
-		Addr:    ":" + serverPort,
+		Addr:    ":" + configs.ApplicationConfigs.ServerPort,
 		Handler: router,
 	}
 
 	go func() {
-		log.Printf("Server is running on port %s...", serverPort)
+		log.Printf("Server is running on port %s...", configs.ApplicationConfigs.ServerPort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %s\n", err)
 		}

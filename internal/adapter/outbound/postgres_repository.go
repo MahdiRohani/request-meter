@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/MahdiRohani/request-meter/internal/core/domain"
+	"github.com/MahdiRohani/request-meter/internal/domain"
 	_ "github.com/lib/pq"
 )
 

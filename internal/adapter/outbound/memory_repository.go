@@ -3,7 +3,7 @@ package outbound
 import (
 	"sync"
 
-	"github.com/MahdiRohani/request-meter/internal/core/domain"
+	"github.com/MahdiRohani/request-meter/internal/domain"
 )
 
 type InMemoryRepository struct {

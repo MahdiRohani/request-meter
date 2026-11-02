@@ -1,6 +1,6 @@
 package outbound
 
-import "github.com/MahdiRohani/request-meter/internal/core/domain"
+import "github.com/MahdiRohani/request-meter/internal/domain"
 
 type FastRepositoryPort interface {
 	Increment(name string) error

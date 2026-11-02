@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MahdiRohani/request-meter/internal/core/domain"
-	"github.com/MahdiRohani/request-meter/internal/core/ports/inbound"
-	"github.com/MahdiRohani/request-meter/internal/core/ports/outbound"
+	"github.com/MahdiRohani/request-meter/internal/domain"
+	"github.com/MahdiRohani/request-meter/internal/port/inbound"
+	"github.com/MahdiRohani/request-meter/internal/port/outbound"
 )
 
 type counterService struct {

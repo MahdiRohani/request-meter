@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MahdiRohani/request-meter/internal/core/domain"
+	"github.com/MahdiRohani/request-meter/internal/domain"
 )
 
 type SlowDatabaseRepository struct {

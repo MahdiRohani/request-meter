@@ -3,7 +3,7 @@ package inbound
 import (
 	"net/http"
 
-	"github.com/MahdiRohani/request-meter/internal/core/ports/inbound"
+	"github.com/MahdiRohani/request-meter/internal/port/inbound"
 	"github.com/gin-gonic/gin"
 )
 
