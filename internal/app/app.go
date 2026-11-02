@@ -3,21 +3,20 @@ package app
 import (
 	"context"
 	"log"
-	"net/http"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
-	"time"
 
 	"github.com/MahdiRohani/request-meter/configs"
 	"github.com/MahdiRohani/request-meter/internal/adapter/inbound"
 	"github.com/MahdiRohani/request-meter/internal/adapter/outbound"
 	services "github.com/MahdiRohani/request-meter/internal/service"
-	"github.com/gin-gonic/gin"
 )
 
-func Run() {
+type App struct {
+	start func() error
+	stop  func() error
+}
+
+func NewApp(ctx context.Context) App {
 
 	postgres := outbound.NewPostgresRepository(configs.ApplicationConfigs.DatabaseURL)
 
@@ -27,47 +26,39 @@ func Run() {
 
 	counterService := services.NewCounterService(memoryRepo, postgres, redisLock)
 
-	ctx, cancelWorker := context.WithCancel(context.Background())
-	var wg sync.WaitGroup
-
-	counterService.StartSync(ctx, &wg, configs.ApplicationConfigs.SyncInterval)
-
 	counterHandler := inbound.NewCounterHandler(counterService)
 
-	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	gin.SetMode(gin.ReleaseMode)
+	httpServer := inbound.NewHttpServer(counterHandler)
 
-	router := gin.Default()
-	router.POST("/counter/:name", counterHandler.IncrementEndpoint)
-	router.GET("/stats/:name", counterHandler.GetStateEndpoint)
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
 
-	srv := &http.Server{
-		Addr:    ":" + configs.ApplicationConfigs.ServerPort,
-		Handler: router,
+	return App{
+		start: func() error {
+			counterService.StartSync(workerCtx, &wg, configs.ApplicationConfigs.SyncInterval)
+			return httpServer.Serve(ctx)
+		},
+		stop: func() error {
+			cancelWorker()
+			wg.Wait()
+			if err := httpServer.Close(ctx); err != nil {
+				log.Println("Error closing HTTP server:", err)
+			}
+			if err := postgres.Close(ctx); err != nil {
+				log.Println("Error closing Postgres:", err)
+			}
+			if err := redisLock.Close(ctx); err != nil {
+				log.Println("Error closing Redis:", err)
+			}
+			return nil
+		},
 	}
+}
 
-	go func() {
-		log.Printf("Server is running on port %s...", configs.ApplicationConfigs.ServerPort)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %s\n", err)
-		}
-	}()
+func (a App) Start(ctx context.Context) error {
+	return a.start()
+}
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	log.Println("Shutting down server gracefully...")
-
-	cancelWorker()
-
-	wg.Wait()
-	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelShutdown()
-
-	if err := srv.Shutdown(ctxShutdown); err != nil {
-		log.Fatal("Server forced to shutdown:", err)
-	}
-
-	log.Println("Server exiting successfully. Data saved.")
+func (a App) Stop(ctx context.Context) error {
+	return a.stop()
 }
