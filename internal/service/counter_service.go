@@ -29,17 +29,18 @@ func NewCounterService(
 		lock:     lock,
 	}
 
-	existingCounters := service.slowRepo.GetAll()
-	service.fastRepo.SetBatch(existingCounters)
+	ctx := context.Background()
+	existingCounters := service.slowRepo.GetAll(ctx)
+	service.fastRepo.SetBatch(ctx, existingCounters)
 	return service
 }
 
 func (c *counterService) Increment(cnt context.Context, cmd inbound.IncrementCommand) error {
-	return c.fastRepo.Increment(cmd.Name)
+	return c.fastRepo.Increment(cnt, cmd.Name)
 }
 
 func (c *counterService) GetStats(cnt context.Context, query inbound.GetStatsQuery) (inbound.GetStatsResult, error) {
-	counter, err := c.fastRepo.Get(query.Name)
+	counter, err := c.fastRepo.Get(cnt, query.Name)
 
 	if counter == nil {
 		return inbound.GetStatsResult{Name: query.Name, Count: 0}, nil
@@ -76,11 +77,11 @@ func (c *counterService) StartSync(cnt context.Context, wg *sync.WaitGroup, inte
 
 func (c *counterService) syncToSlowDB(cnt context.Context) {
 	instance := os.Getenv("INSTANCE_NAME")
-	snapShot := c.fastRepo.GetAll()
+	snapShot := c.fastRepo.GetAll(cnt)
 
 	if len(snapShot) == 0 {
-		existingCounters := c.slowRepo.GetAll()
-		c.fastRepo.SetBatch(existingCounters)
+		existingCounters := c.slowRepo.GetAll(cnt)
+		c.fastRepo.SetBatch(cnt, existingCounters)
 		log.Printf("[Instance-%s] Read-Cache synced from DB (No local writes)", instance)
 		return
 	}
@@ -97,7 +98,7 @@ func (c *counterService) syncToSlowDB(cnt context.Context) {
 	defer c.lock.Release(context.Background(), lockKey)
 	log.Printf("[Instance-%s] GOT LOCK! Flushing %v to DB...", instance, snapShot)
 
-	existingCounters := c.slowRepo.GetAll()
+	existingCounters := c.slowRepo.GetAll(cnt)
 	existingMap := make(map[string]int64)
 
 	for _, counter := range existingCounters {
@@ -115,13 +116,13 @@ func (c *counterService) syncToSlowDB(cnt context.Context) {
 		})
 	}
 
-	err = c.slowRepo.SaveBatch(finalTotals)
+	err = c.slowRepo.SaveBatch(cnt, finalTotals)
 	if err != nil {
 		log.Printf("Failed to batch save counters: %v\n", err)
 		return
 	}
-	c.fastRepo.ResetFlushed(snapShot)
+	c.fastRepo.ResetFlushed(cnt, snapShot)
 
-	c.fastRepo.SetBatch(finalTotals)
+	c.fastRepo.SetBatch(cnt, finalTotals)
 	log.Printf("[Instance-%s] DB Sync & Cache Update Complete! Current DB State: %v", instance, existingCounters)
 }

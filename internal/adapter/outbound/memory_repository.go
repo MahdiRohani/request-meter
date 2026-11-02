@@ -1,6 +1,7 @@
 package outbound
 
 import (
+	"context"
 	"sync"
 
 	"github.com/MahdiRohani/request-meter/internal/domain"
@@ -19,7 +20,7 @@ func NewInMemoryRepository() *InMemoryRepository {
 	}
 }
 
-func (r *InMemoryRepository) Increment(name string) error {
+func (r *InMemoryRepository) Increment(ctx context.Context, name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -30,7 +31,7 @@ func (r *InMemoryRepository) Increment(name string) error {
 	return nil
 }
 
-func (r *InMemoryRepository) Get(name string) (*domain.Counter, error) {
+func (r *InMemoryRepository) Get(ctx context.Context, name string) (*domain.Counter, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -44,7 +45,7 @@ func (r *InMemoryRepository) Get(name string) (*domain.Counter, error) {
 	}, nil
 }
 
-func (r *InMemoryRepository) GetAll() []*domain.Counter {
+func (r *InMemoryRepository) GetAll(ctx context.Context) []*domain.Counter {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -58,7 +59,7 @@ func (r *InMemoryRepository) GetAll() []*domain.Counter {
 	return snapshot
 }
 
-func (r *InMemoryRepository) SetBatch(counters []*domain.Counter) {
+func (r *InMemoryRepository) SetBatch(ctx context.Context, counters []*domain.Counter) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -71,7 +72,7 @@ func (r *InMemoryRepository) SetBatch(counters []*domain.Counter) {
 
 }
 
-func (r *InMemoryRepository) ResetFlushed(flushed []*domain.Counter) {
+func (r *InMemoryRepository) ResetFlushed(ctx context.Context, flushed []*domain.Counter) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

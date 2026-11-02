@@ -20,7 +20,7 @@ type GetStatsResult struct {
 }
 
 type CounterService interface {
-	Increment(cnx context.Context, cmd IncrementCommand) error
-	GetStats(cnt context.Context, query GetStatsQuery) (GetStatsResult, error)
-	StartSync(cnx context.Context, wg *sync.WaitGroup, interval time.Duration)
+	Increment(ctx context.Context, cmd IncrementCommand) error
+	GetStats(ctx context.Context, query GetStatsQuery) (GetStatsResult, error)
+	StartSync(ctx context.Context, wg *sync.WaitGroup, interval time.Duration)
 }

@@ -1,6 +1,7 @@
 package outbound
 
 import (
+	"context"
 	"database/sql"
 	"log"
 
@@ -25,12 +26,17 @@ func NewPostgresRepository(dbURL string) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-func (p *PostgresRepository) SaveBatch(counters []*domain.Counter) error {
+func (p *PostgresRepository) Close(ctx context.Context) error {
+	log.Println("Closing postgres connection...")
+	return p.db.Close()
+}
+
+func (p *PostgresRepository) SaveBatch(ctx context.Context, counters []*domain.Counter) error {
 	if len(counters) == 0 {
 		return nil
 	}
 
-	tx, err := p.db.Begin()
+	tx, err := p.db.BeginTx(ctx, nil)
 	defer tx.Rollback()
 
 	query := `
@@ -39,13 +45,13 @@ func (p *PostgresRepository) SaveBatch(counters []*domain.Counter) error {
 		ON CONFLICT (name) 
 		DO UPDATE SET count = EXCLUDED.count; 
 	`
-	stmt, err := tx.Prepare(query)
+	stmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	for _, c := range counters {
-		_, err := stmt.Exec(c.Name, c.Count)
+		_, err := stmt.ExecContext(ctx, c.Name, c.Count)
 		if err != nil {
 			return err
 		}
@@ -53,8 +59,8 @@ func (p *PostgresRepository) SaveBatch(counters []*domain.Counter) error {
 	return tx.Commit()
 }
 
-func (p *PostgresRepository) GetAll() []*domain.Counter {
-	rows, err := p.db.Query("SELECT name, count FROM counters")
+func (p *PostgresRepository) GetAll(ctx context.Context) []*domain.Counter {
+	rows, err := p.db.QueryContext(ctx, "SELECT name, count FROM counters")
 	if err != nil {
 		log.Printf("Failed to fetch counters: %v", err)
 		return nil
