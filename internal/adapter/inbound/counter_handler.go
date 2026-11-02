@@ -25,7 +25,8 @@ func (h *CounterHandler) IncrementEndpoint(c *gin.Context) {
 		return
 	}
 
-	err := h.service.Increment(name)
+	cmd := inbound.IncrementCommand{Name: name}
+	err := h.service.Increment(c.Request.Context(), cmd)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -41,7 +42,8 @@ func (h *CounterHandler) GetStateEndpoint(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "counter name is required"})
 		return
 	}
-	stats, err := h.service.GetStats(name)
+	query := inbound.GetStatsQuery{Name: name}
+	stats, err := h.service.GetStats(c.Request.Context(), query)
 
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})

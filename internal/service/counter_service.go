@@ -34,17 +34,20 @@ func NewCounterService(
 	return service
 }
 
-func (c *counterService) Increment(name string) error {
-	return c.fastRepo.Increment(name)
+func (c *counterService) Increment(cnt context.Context, cmd inbound.IncrementCommand) error {
+	return c.fastRepo.Increment(cmd.Name)
 }
 
-func (c *counterService) GetStats(name string) (*domain.Counter, error) {
-	counter, err := c.fastRepo.Get(name)
+func (c *counterService) GetStats(cnt context.Context, query inbound.GetStatsQuery) (inbound.GetStatsResult, error) {
+	counter, err := c.fastRepo.Get(query.Name)
 
 	if counter == nil {
-		return domain.NewCounter(name), nil
+		return inbound.GetStatsResult{Name: query.Name, Count: 0}, nil
 	}
-	return counter, err
+	return inbound.GetStatsResult{
+		Name:  counter.Name,
+		Count: counter.Count,
+	}, err
 }
 
 func (c *counterService) StartSync(cnt context.Context, wg *sync.WaitGroup, interval time.Duration) {

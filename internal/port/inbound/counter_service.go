@@ -4,12 +4,23 @@ import (
 	"context"
 	"sync"
 	"time"
-
-	"github.com/MahdiRohani/request-meter/internal/domain"
 )
 
+type IncrementCommand struct {
+	Name string
+}
+
+type GetStatsQuery struct {
+	Name string
+}
+
+type GetStatsResult struct {
+	Name  string `json:"name"`
+	Count int64  `json:"count"`
+}
+
 type CounterService interface {
-	Increment(name string) error
-	GetStats(name string) (*domain.Counter, error)
+	Increment(cnx context.Context, cmd IncrementCommand) error
+	GetStats(cnt context.Context, query GetStatsQuery) (GetStatsResult, error)
 	StartSync(cnx context.Context, wg *sync.WaitGroup, interval time.Duration)
 }
