@@ -1,3 +1,5 @@
+192.168.100.6/coreinno/common.git v0.0.0-20261101080739-f2d9f2efe37c h1:HF+uJqgWfR0Yk5nDNAcw0F1NJs/Oh1QAlNPQYJPQNzA=
+192.168.100.6/coreinno/common.git v0.0.0-20261101080739-f2d9f2efe37c/go.mod h1:IM6uzgmbEx8cgHW2T4Y4Job+hq3k1nM5vHVHAtl3e6A=
 github.com/bytedance/gopkg v0.1.4 h1:oZnQwnX82KAIWb7033bEwtxvTqXcYMxDBaQxo5JJHWM=
 github.com/bytedance/gopkg v0.1.4/go.mod h1:v1zWfPm21Fb+OsyXN2VAHdL6TBb2L88anLQgdyje6R4=
 github.com/bytedance/sonic v1.15.4 h1:FgtV/4aBHpla9AxuMpuuzVUpa/Cf3izufkxNmnEzdI8=

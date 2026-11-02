@@ -1,0 +1,1053 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+cmd/
+  main.go
+deployment/
+  docker/
+    docker-compose.yml
+    dockerfile
+internal/
+  adapters/
+    inbound/
+      counter_handler.go
+    outbound/
+      memory_repository.go
+      postgres_repository.go
+      redis_lock_adapter.go
+      slow_database_repository.go
+  app/
+    app.go
+  core/
+    domain/
+      counter.go
+    ports/
+      inbound/
+        counter_service.go
+      outbound/
+        counter_repository.go
+        distributed_lock_port.go
+    services/
+      counter_service.go
+migrations/
+  init.sql
+scripts/
+  scenarios.go
+.gitignore
+go.mod
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="deployment/docker/dockerfile">
+FROM golang:alpine AS builder
+
+
+WORKDIR /app
+
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+
+COPY . .
+
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/request-meter ./cmd/main.go
+
+
+FROM alpine:latest
+
+WORKDIR /root/
+
+
+COPY --from=builder /app/request-meter .
+COPY --from=builder /app/.env . 
+
+
+EXPOSE 8080
+
+
+CMD ["./request-meter"]
+</file>
+
+<file path="internal/adapters/inbound/counter_handler.go">
+package inbound
+
+import (
+	"net/http"
+
+	"github.com/MahdiRohani/request-meter/internal/core/ports/inbound"
+	"github.com/gin-gonic/gin"
+)
+
+type CounterHandler struct {
+	service inbound.CounterService
+}
+
+func NewCounterHandler(service inbound.CounterService) *CounterHandler {
+	return &CounterHandler{
+		service: service,
+	}
+}
+
+func (h *CounterHandler) IncrementEndpoint(c *gin.Context) {
+	name := c.Param("name")
+
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "counter name is required"})
+		return
+	}
+
+	err := h.service.Increment(name)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "counter incremented successfully", "counter_name": name})
+}
+
+func (h *CounterHandler) GetStateEndpoint(c *gin.Context) {
+	name := c.Param("name")
+
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "counter name is required"})
+		return
+	}
+	stats, err := h.service.GetStats(name)
+
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
+}
+</file>
+
+<file path="internal/core/domain/counter.go">
+package domain
+
+type Counter struct {
+	Name  string
+	Count int64
+}
+
+func NewCounter(name string) *Counter {
+	return &Counter{
+		Name:  name,
+		Count: 0,
+	}
+}
+
+func (c *Counter) Increment() {
+	c.Count++
+}
+</file>
+
+<file path="internal/core/ports/outbound/distributed_lock_port.go">
+package outbound
+
+import (
+	"context"
+	"time"
+)
+
+type DistributedLockPort interface {
+	Acquire(ctx context.Context, key string, ttl time.Duration) (bool, error)
+	Release(ctx context.Context, key string) error
+}
+</file>
+
+<file path="migrations/init.sql">
+CREATE TABLE IF NOT EXISTS counters (
+    name VARCHAR(255) PRIMARY KEY,
+    count BIGINT NOT NULL
+);
+</file>
+
+<file path=".gitignore">
+.env
+request-meter.exe
+</file>
+
+<file path="cmd/main.go">
+package main
+
+import "github.com/MahdiRohani/request-meter/internal/app"
+
+func main() {
+
+	app.Run()
+}
+</file>
+
+<file path="deployment/docker/docker-compose.yml">
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: request_meter_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: meter_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../../migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
+  
+  redis:
+    image: redis:7-alpine
+    container_name: request_meter_redis
+    ports:
+      - "6379:6379"
+
+  api1:
+    build: 
+      context: ../../
+      dockerfile: deployment/docker/Dockerfile
+    restart: on-failure
+    environment:
+      - INSTANCE_NAME=8081
+      - DATABASE_URL=postgres://admin:password@postgres:5432/meter_db?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - SERVER_PORT=8080
+      - SYNC_INTERVAL=500ms
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+      - redis
+
+  api2:
+    build: 
+      context: ../../
+      dockerfile: deployment/docker/Dockerfile
+    restart: on-failure 
+    environment:
+      - INSTANCE_NAME=8082
+      - DATABASE_URL=postgres://admin:password@postgres:5432/meter_db?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - SERVER_PORT=8080
+      - SYNC_INTERVAL=500ms
+    ports:
+      - "8082:8080"
+    depends_on:
+      - postgres
+      - redis
+
+  api3:
+    build: 
+      context: ../../
+      dockerfile: deployment/docker/Dockerfile
+    restart: on-failure
+    environment:
+      - INSTANCE_NAME=8083
+      - DATABASE_URL=postgres://admin:password@postgres:5432/meter_db?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - SERVER_PORT=8080
+      - SYNC_INTERVAL=500ms
+    ports:
+      - "8083:8080"
+    depends_on:
+      - postgres
+      - redis
+
+volumes:
+  pgdata:
+</file>
+
+<file path="scripts/scenarios.go">
+package main
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"sync"
+	"time"
+
+	_ "github.com/lib/pq"
+)
+
+type StatResp struct {
+	Name  string `json:"Name"`
+	Count int64  `json:"Count"`
+}
+
+var loadTestClient = &http.Client{
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     200,
+		IdleConnTimeout:     30 * time.Second,
+	},
+	Timeout: 5 * time.Second,
+}
+
+var db *sql.DB
+
+func initDB() {
+	var err error
+	db, err = sql.Open("postgres", "postgres://admin:password@localhost:5432/meter_db?sslmode=disable")
+	if err != nil {
+		panic(err)
+	}
+}
+
+func now() string {
+	return time.Now().Format("15:04:05.000")
+}
+
+func getInstanceStat(port int, counter string) int64 {
+	url := fmt.Sprintf("http://localhost:%d/stats/%s", port, counter)
+	resp, err := loadTestClient.Get(url)
+	if err != nil {
+		return -1
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var s StatResp
+	json.Unmarshal(body, &s)
+	return s.Count
+}
+
+func getDirectDBStat(counter string) int64 {
+	var count int64
+	err := db.QueryRow("SELECT count FROM counters WHERE name = $1", counter).Scan(&count)
+	if err != nil {
+		return 0
+	}
+	return count
+}
+
+func sendRequestsGradually(port int, counter string, total int, duration time.Duration, wg *sync.WaitGroup) {
+	if wg != nil {
+		defer wg.Done()
+	}
+	delay := duration / time.Duration(total)
+	url := fmt.Sprintf("http://localhost:%d/counter/%s", port, counter)
+
+	var reqWg sync.WaitGroup
+	reqWg.Add(total)
+
+	for i := 0; i < total; i++ {
+
+		go func() {
+			defer reqWg.Done()
+			req, _ := http.NewRequest("POST", url, nil)
+			resp, err := loadTestClient.Do(req)
+
+			if err != nil {
+				fmt.Printf("[%s] ❌ Failed to send request to Port %d: %v\n", now(), port, err)
+				return
+			}
+
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}()
+
+		time.Sleep(delay)
+	}
+
+	reqWg.Wait()
+	fmt.Printf("[%s] Finished sending %d reqs to Port %d\n", now(), total, port)
+}
+
+func startLiveMonitor(counter string, interval time.Duration, stopChan chan bool) {
+	ticker := time.NewTicker(interval)
+	for {
+		select {
+		case <-stopChan:
+			ticker.Stop()
+			return
+		case <-ticker.C:
+			c1 := getInstanceStat(8081, counter)
+			c2 := getInstanceStat(8082, counter)
+			c3 := getInstanceStat(8083, counter)
+			dbCount := getDirectDBStat(counter)
+			fmt.Printf("[%s] MONITOR | 8081: %4d | 8082: %4d | 8083: %4d || 🐘 Direct Postgres DB: %4d\n",
+				now(), c1, c2, c3, dbCount)
+		}
+	}
+}
+
+func main() {
+	initDB()
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run scenarios.go [1|2|4]")
+		return
+	}
+	scenario := os.Args[1]
+
+	switch scenario {
+	case "1":
+		counter := "scen1_single"
+		db.Exec("DELETE FROM counters WHERE name = $1", counter)
+		stop := make(chan bool)
+		fmt.Printf("[%s] 🚀 Scenario 1: Sending 1000 reqs to 8081 over 1.5 seconds...\n", now())
+		go startLiveMonitor(counter, 150*time.Millisecond, stop)
+		sendRequestsGradually(8081, counter, 1000, 1500*time.Millisecond, nil)
+		time.Sleep(1 * time.Second)
+		stop <- true
+
+	case "2":
+		counter := "scen2_multi"
+		db.Exec("DELETE FROM counters WHERE name = $1", counter)
+		stop := make(chan bool)
+		var wg sync.WaitGroup
+		fmt.Printf("[%s] 🚀 Scenario 2: 1000->8081, 500->8082, 800->8083 over 2 seconds...\n", now())
+		go startLiveMonitor(counter, 200*time.Millisecond, stop)
+		wg.Add(3)
+		go sendRequestsGradually(8081, counter, 1000, 2*time.Second, &wg)
+		go sendRequestsGradually(8082, counter, 500, 2*time.Second, &wg)
+		go sendRequestsGradually(8083, counter, 800, 2*time.Second, &wg)
+		wg.Wait()
+		time.Sleep(1500 * time.Millisecond)
+		stop <- true
+
+	case "4":
+		counter := "scen4_one_click"
+		db.Exec("DELETE FROM counters WHERE name = $1", counter)
+		stop := make(chan bool)
+		fmt.Printf("[%s] Scenario 4: Sending ONLY 1 request to 8081...\n", now())
+		go startLiveMonitor(counter, 100*time.Millisecond, stop)
+		time.Sleep(200 * time.Millisecond)
+		sendRequestsGradually(8081, counter, 1, 1*time.Millisecond, nil)
+		time.Sleep(1500 * time.Millisecond)
+		stop <- true
+	}
+}
+</file>
+
+<file path="internal/adapters/outbound/redis_lock_adapter.go">
+package outbound
+
+import (
+	"context"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
+
+type RedisLockAdapter struct {
+	client *redis.Client
+}
+
+func NewRedisLockAdapter(redisAddr string) *RedisLockAdapter {
+	client := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+
+	return &RedisLockAdapter{
+		client: client,
+	}
+}
+
+func (r *RedisLockAdapter) Acquire(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	success, err := r.client.SetNX(ctx, key, "locked", ttl).Result()
+	if err != nil {
+		return false, err
+	}
+	return success, nil
+}
+
+func (r *RedisLockAdapter) Release(ctx context.Context, key string) error {
+	return r.client.Del(ctx, key).Err()
+}
+</file>
+
+<file path="internal/app/app.go">
+package app
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/MahdiRohani/request-meter/internal/adapters/inbound"
+	"github.com/MahdiRohani/request-meter/internal/adapters/outbound"
+	"github.com/MahdiRohani/request-meter/internal/core/services"
+	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
+)
+
+func Run() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("Warning: No .env file found. Using system environment variables.")
+	}
+
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		log.Fatal("DATABASE_URL is required in .env")
+	}
+
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		log.Fatal("REDIS_ADDR is required in .env")
+	}
+
+	serverPort := os.Getenv("SERVER_PORT")
+	if serverPort == "" {
+		serverPort = "8080"
+	}
+
+	syncIntervalStr := os.Getenv("SYNC_INTERVAL")
+	syncInterval, err := time.ParseDuration(syncIntervalStr)
+	if err != nil || syncInterval <= 0 {
+		syncInterval = 500 * time.Millisecond
+	}
+
+	postgres := outbound.NewPostgresRepository(dbURL)
+
+	redisLock := outbound.NewRedisLockAdapter(redisAddr)
+
+	memoryRepo := outbound.NewInMemoryRepository()
+
+	counterService := services.NewCounterService(memoryRepo, postgres, redisLock)
+
+	ctx, cancelWorker := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+
+	counterService.StartSync(ctx, &wg, syncInterval)
+
+	counterHandler := inbound.NewCounterHandler(counterService)
+
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	gin.SetMode(gin.ReleaseMode)
+
+	router := gin.Default()
+	router.POST("/counter/:name", counterHandler.IncrementEndpoint)
+	router.GET("/stats/:name", counterHandler.GetStateEndpoint)
+
+	srv := &http.Server{
+		Addr:    ":" + serverPort,
+		Handler: router,
+	}
+
+	go func() {
+		log.Printf("Server is running on port %s...", serverPort)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server gracefully...")
+
+	cancelWorker()
+
+	wg.Wait()
+	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+
+	if err := srv.Shutdown(ctxShutdown); err != nil {
+		log.Fatal("Server forced to shutdown:", err)
+	}
+
+	log.Println("Server exiting successfully. Data saved.")
+}
+</file>
+
+<file path="internal/core/ports/inbound/counter_service.go">
+package inbound
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/MahdiRohani/request-meter/internal/core/domain"
+)
+
+type CounterService interface {
+	Increment(name string) error
+	GetStats(name string) (*domain.Counter, error)
+	StartSync(cnx context.Context, wg *sync.WaitGroup, interval time.Duration)
+}
+</file>
+
+<file path="internal/adapters/outbound/postgres_repository.go">
+package outbound
+
+import (
+	"database/sql"
+	"log"
+
+	"github.com/MahdiRohani/request-meter/internal/core/domain"
+	_ "github.com/lib/pq"
+)
+
+type PostgresRepository struct {
+	db *sql.DB
+}
+
+func NewPostgresRepository(dbURL string) *PostgresRepository {
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatalf("Failed to open database connection: %v", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		log.Fatalf("Database is not reachable: %v", err)
+	}
+
+	return &PostgresRepository{db: db}
+}
+
+func (p *PostgresRepository) SaveBatch(counters []*domain.Counter) error {
+	if len(counters) == 0 {
+		return nil
+	}
+
+	tx, err := p.db.Begin()
+	defer tx.Rollback()
+
+	query := `
+		INSERT INTO counters (name, count)
+		VALUES ($1, $2)
+		ON CONFLICT (name) 
+		DO UPDATE SET count = EXCLUDED.count; 
+	`
+	stmt, err := tx.Prepare(query)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, c := range counters {
+		_, err := stmt.Exec(c.Name, c.Count)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (p *PostgresRepository) GetAll() []*domain.Counter {
+	rows, err := p.db.Query("SELECT name, count FROM counters")
+	if err != nil {
+		log.Printf("Failed to fetch counters: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var snapshot []*domain.Counter
+	for rows.Next() {
+		var c domain.Counter
+		if err := rows.Scan(&c.Name, &c.Count); err == nil {
+			snapshot = append(snapshot, &c)
+		} else {
+			log.Printf("Error scanning row: %v", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating over rows: %v", err)
+		return nil
+	}
+	return snapshot
+}
+</file>
+
+<file path="internal/adapters/outbound/slow_database_repository.go">
+package outbound
+
+import (
+	"log"
+	"math/rand"
+	"sync"
+	"time"
+
+	"github.com/MahdiRohani/request-meter/internal/core/domain"
+)
+
+type SlowDatabaseRepository struct {
+	mu       sync.RWMutex
+	counters map[string]*domain.Counter
+}
+
+func NewSlowDatabaseRepository() *SlowDatabaseRepository {
+	return &SlowDatabaseRepository{
+		counters: make(map[string]*domain.Counter),
+	}
+}
+
+func (s *SlowDatabaseRepository) simulateLatency() {
+	delay := time.Duration(rand.Intn(500)+500) * time.Millisecond
+	time.Sleep(delay)
+}
+
+func (s *SlowDatabaseRepository) GetAll() []*domain.Counter {
+	s.simulateLatency()
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var snapshot []*domain.Counter
+	for _, val := range s.counters {
+		snapshot = append(snapshot, &domain.Counter{
+			Name:  val.Name,
+			Count: val.Count,
+		})
+	}
+	return snapshot
+}
+
+func (s *SlowDatabaseRepository) SaveBatch(counters []*domain.Counter) error {
+	s.simulateLatency()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, counter := range counters {
+		s.counters[counter.Name] = &domain.Counter{
+			Name:  counter.Name,
+			Count: counter.Count,
+		}
+		log.Printf("[Database] Saved: %s = %d\n", counter.Name, counter.Count)
+	}
+
+	return nil
+}
+</file>
+
+<file path="internal/adapters/outbound/memory_repository.go">
+package outbound
+
+import (
+	"sync"
+
+	"github.com/MahdiRohani/request-meter/internal/core/domain"
+)
+
+type InMemoryRepository struct {
+	mu           sync.RWMutex
+	deltas       map[string]*domain.Counter
+	cachedTotals map[string]*domain.Counter
+}
+
+func NewInMemoryRepository() *InMemoryRepository {
+	return &InMemoryRepository{
+		deltas:       make(map[string]*domain.Counter),
+		cachedTotals: make(map[string]*domain.Counter),
+	}
+}
+
+func (r *InMemoryRepository) Increment(name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, exists := r.deltas[name]; !exists {
+		r.deltas[name] = domain.NewCounter(name)
+	}
+	r.deltas[name].Increment()
+	return nil
+}
+
+func (r *InMemoryRepository) Get(name string) (*domain.Counter, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	counter, exists := r.cachedTotals[name]
+	if !exists {
+		return nil, nil
+	}
+	return &domain.Counter{
+		Name:  counter.Name,
+		Count: counter.Count,
+	}, nil
+}
+
+func (r *InMemoryRepository) GetAll() []*domain.Counter {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var snapshot []*domain.Counter
+	for _, counter := range r.deltas {
+		snapshot = append(snapshot, &domain.Counter{
+			Name:  counter.Name,
+			Count: counter.Count,
+		})
+	}
+	return snapshot
+}
+
+func (r *InMemoryRepository) SetBatch(counters []*domain.Counter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, counter := range counters {
+		r.cachedTotals[counter.Name] = &domain.Counter{
+			Name:  counter.Name,
+			Count: counter.Count,
+		}
+	}
+
+}
+
+func (r *InMemoryRepository) ResetFlushed(flushed []*domain.Counter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, f := range flushed {
+
+		if current, exists := r.deltas[f.Name]; exists {
+
+			current.Count -= f.Count
+
+			if current.Count <= 0 {
+				delete(r.deltas, f.Name)
+			}
+		}
+	}
+}
+</file>
+
+<file path="go.mod">
+module github.com/MahdiRohani/request-meter
+
+go 1.27.2
+
+require (
+	github.com/gin-gonic/gin v1.12.0
+	github.com/joho/godotenv v1.5.1
+	github.com/redis/go-redis/v9 v9.23.0
+)
+
+require (
+	192.168.100.6/coreinno/common.git v0.0.0-20261101080739-f2d9f2efe37c // indirect
+	github.com/bytedance/gopkg v0.1.4 // indirect
+	github.com/bytedance/sonic v1.15.5 // indirect
+	github.com/bytedance/sonic/loader v0.5.3 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cloudwego/base64x v0.1.7 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
+	github.com/gin-contrib/sse v1.1.2 // indirect
+	github.com/go-playground/locales v0.14.2 // indirect
+	github.com/go-playground/universal-translator v0.18.2 // indirect
+	github.com/go-playground/validator/v10 v10.30.5 // indirect
+	github.com/goccy/go-json v0.11.2 // indirect
+	github.com/goccy/go-yaml v1.19.2 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.1 // indirect
+	github.com/leodido/go-urn v1.5.0 // indirect
+	github.com/lib/pq v1.12.3 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
+	github.com/quic-go/qpack v0.6.0 // indirect
+	github.com/quic-go/quic-go v0.64.1 // indirect
+	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
+	github.com/ugorji/go/codec v1.3.2 // indirect
+	go.mongodb.org/mongo-driver/v2 v2.9.2 // indirect
+	go.uber.org/atomic v1.12.0 // indirect
+	golang.org/x/arch v0.32.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
+)
+</file>
+
+<file path="internal/core/ports/outbound/counter_repository.go">
+package outbound
+
+import "github.com/MahdiRohani/request-meter/internal/core/domain"
+
+type FastRepositoryPort interface {
+	Increment(name string) error
+	Get(name string) (*domain.Counter, error)
+	GetAll() []*domain.Counter
+	SetBatch(counters []*domain.Counter)
+	ResetFlushed(flushedCounters []*domain.Counter)
+}
+
+type SlowRepositoryPort interface {
+	SaveBatch(counters []*domain.Counter) error
+	GetAll() []*domain.Counter
+}
+</file>
+
+<file path="internal/core/services/counter_service.go">
+package services
+
+import (
+	"context"
+	"log"
+	"os"
+	"sync"
+	"time"
+
+	"github.com/MahdiRohani/request-meter/internal/core/domain"
+	"github.com/MahdiRohani/request-meter/internal/core/ports/inbound"
+	"github.com/MahdiRohani/request-meter/internal/core/ports/outbound"
+)
+
+type counterService struct {
+	fastRepo outbound.FastRepositoryPort
+	slowRepo outbound.SlowRepositoryPort
+	lock     outbound.DistributedLockPort
+}
+
+func NewCounterService(
+	fastRepo outbound.FastRepositoryPort,
+	slowRepo outbound.SlowRepositoryPort,
+	lock outbound.DistributedLockPort) inbound.CounterService {
+
+	service := &counterService{
+		fastRepo: fastRepo,
+		slowRepo: slowRepo,
+		lock:     lock,
+	}
+
+	existingCounters := service.slowRepo.GetAll()
+	service.fastRepo.SetBatch(existingCounters)
+	return service
+}
+
+func (c *counterService) Increment(name string) error {
+	return c.fastRepo.Increment(name)
+}
+
+func (c *counterService) GetStats(name string) (*domain.Counter, error) {
+	counter, err := c.fastRepo.Get(name)
+
+	if counter == nil {
+		return domain.NewCounter(name), nil
+	}
+	return counter, err
+}
+
+func (c *counterService) StartSync(cnt context.Context, wg *sync.WaitGroup, interval time.Duration) {
+	wg.Add(1)
+	ticker := time.NewTicker(interval)
+
+	go func() {
+		defer wg.Done()
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-cnt.Done():
+				log.Println("Stopping background worker. Flushing final data")
+				rescueCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				c.syncToSlowDB(rescueCtx)
+				return
+			case <-ticker.C:
+				c.syncToSlowDB(cnt)
+			}
+		}
+	}()
+
+}
+
+func (c *counterService) syncToSlowDB(cnt context.Context) {
+	instance := os.Getenv("INSTANCE_NAME")
+	snapShot := c.fastRepo.GetAll()
+
+	if len(snapShot) == 0 {
+		existingCounters := c.slowRepo.GetAll()
+		c.fastRepo.SetBatch(existingCounters)
+		log.Printf("[Instance-%s] Read-Cache synced from DB (No local writes)", instance)
+		return
+	}
+
+	lockKey := "sync_counters_lock"
+	ttl := 10 * time.Second
+
+	acquire, err := c.lock.Acquire(cnt, lockKey, ttl)
+
+	if err != nil || !acquire {
+		log.Printf("[Instance-%s] LOCKED OUT! Waiting for next cycle...", instance)
+		return
+	}
+	defer c.lock.Release(context.Background(), lockKey)
+	log.Printf("[Instance-%s] GOT LOCK! Flushing %v to DB...", instance, snapShot)
+
+	existingCounters := c.slowRepo.GetAll()
+	existingMap := make(map[string]int64)
+
+	for _, counter := range existingCounters {
+		existingMap[counter.Name] = counter.Count
+	}
+
+	var finalTotals []*domain.Counter
+	for _, memcounter := range snapShot {
+		currentDBCount := existingMap[memcounter.Name]
+		newAbsoluteTotal := currentDBCount + memcounter.Count
+
+		finalTotals = append(finalTotals, &domain.Counter{
+			Name:  memcounter.Name,
+			Count: newAbsoluteTotal,
+		})
+	}
+
+	err = c.slowRepo.SaveBatch(finalTotals)
+	if err != nil {
+		log.Printf("Failed to batch save counters: %v\n", err)
+		return
+	}
+	c.fastRepo.ResetFlushed(snapShot)
+
+	c.fastRepo.SetBatch(finalTotals)
+	log.Printf("[Instance-%s] DB Sync & Cache Update Complete! Current DB State: %v", instance, existingCounters)
+}
+</file>
+
+</files>

@@ -9,6 +9,7 @@ require (
 )
 
 require (
+	192.168.100.6/coreinno/common.git v0.0.0-20261101080739-f2d9f2efe37c // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.5 // indirect
 	github.com/bytedance/sonic/loader v0.5.3 // indirect
